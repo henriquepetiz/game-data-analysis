@@ -1,0 +1,149 @@
+# dados_jogos.py
+
+import csv
+import os
+
+from excecoes import ErroNoCarregamento, DadosNaoCarregados
+# Retorna os erros em caso de falha na leitura ou arquivo não encontrado
+
+class AnalisadorJogos:
+    #Classe para carregar, armazenar e realizar consultas no conjunto de dados fornecido
+
+    def __init__(self):
+        self._dados = []  
+
+    def carregar_dados(self, caminho_arquivo: str):
+        #Carrega os dados do arquivo CSV especificado através do path fornecido
+
+        self._dados = []
+        if not os.path.exists(caminho_arquivo):
+            raise FileNotFoundError(f"Arquivo não encontrado em: {caminho_arquivo}")
+
+        try:
+            with open(caminho_arquivo, mode='r', encoding='utf-8') as arquivo:
+                leitor_csv = csv.DictReader(arquivo)
+                for linha in leitor_csv:
+                    self._dados.append(linha)
+
+            if not self._dados:
+                raise ErroNoCarregamento("O arquivo foi carregado, mas está vazio.")
+
+        except Exception as e:
+            raise ErroNoCarregamento(f"Falha na leitura do arquivo: {e}")
+
+
+    def _checar_dados_carregados(self):
+        #Garante que os dados estão prontos para consulta
+        if not self._dados:
+            raise DadosNaoCarregados()
+
+
+    # ------------------ MÉTODOS DE CONSULTA ------------------
+
+    ## P1: Qual o percentual de jogos gratuitos e pagos na plataforma?
+    def consultar_percentual_gratis(self):
+        #Calcula o percentual de jogos gratuitos e pagos baseado na coluna 'Price'
+        self._checar_dados_carregados()
+
+        total_jogos = len(self._dados)
+        if total_jogos == 0:
+            return {"Gratuitos": 0.0, "Pagos": 0.0, "Total": 0}
+
+        jogos_gratuitos = 0
+
+        for jogo in self._dados:
+            price_str = jogo.get('Price', '').strip()
+
+            try:
+                # Se o preço for "0.00" ou "0.0", será convertido para 0.0, e a contagem é feita.
+                price = float(price_str)
+                if price == 0.0:
+                    jogos_gratuitos += 1
+            except ValueError:
+                # Trata campos de preço vazios ou corrompidos.
+                pass 
+
+        jogos_pagos = total_jogos - jogos_gratuitos
+
+        percentual_gratis = (jogos_gratuitos / total_jogos) * 100
+        percentual_pagos = (jogos_pagos / total_jogos) * 100
+
+        return {
+            "Gratuitos": round(percentual_gratis, 2),
+            "Pagos": round(percentual_pagos, 2),
+            "Total": total_jogos
+        }
+
+    # P2: Qual o ano com o maior número de novos jogos?
+    def consultar_ano_maior_lancamento(self):
+        #Encontra o ano com o maior número de lançamentos (baseado em 'Release date')
+        self._checar_dados_carregados()
+
+        contagem_por_ano = {}
+
+        for jogo in self._dados:
+            data_lancamento = jogo.get('Release date', '').strip()
+
+            if data_lancamento:
+                # Divide a string da data pela vírgula
+                partes = data_lancamento.split(',')
+
+                # Assume que o ano é o último elemento após a vírgula (ex: " Mar 18", " 2018")
+                if len(partes) > 1:
+                    ano_str = partes[-1].strip() # Pega ' 2018' e remove o espaço, resultando em '2018'
+                else:
+                    # Alternativa: tenta pegar os 4 últimos caracteres (funciona para YYYY-MM-DD ou YYYY)
+                    ano_str = data_lancamento[-4:]
+
+                # Garante que são 4 dígitos e tenta converter para Int (para validação)
+                if ano_str.isdigit() and len(ano_str) == 4:
+                    ano = ano_str
+                    contagem_por_ano[ano] = contagem_por_ano.get(ano, 0) + 1
+
+        # ... (O restante da lógica para encontrar o máximo e empates)
+        if not contagem_por_ano:
+            return {"Ano(s)": [], "Contagem": 0}
+
+        contagem_maxima = max(contagem_por_ano.values())
+
+        anos_empatados = [
+            ano for ano, contagem in contagem_por_ano.items()  
+            if contagem == contagem_maxima
+        ]
+
+        return {
+            "Ano(s)": anos_empatados, 
+            "Contagem": contagem_maxima
+        }
+
+    # P3: Qual a desenvolvedora com maior número de jogos com Metacritic >= 90?
+    def consultar_dev_metacritic_90(self):
+       #Encontra a desenvolvedora com mais jogos que possuem uma pontuação Metacritic de 90 ou superior
+        self._checar_dados_carregados()
+
+        contagem_dev = {}
+
+        for jogo in self._dados:
+            # Tenta converter o Metacritic score para inteiro
+            try:
+                score = int(jogo.get('Metacritic score', '0'))
+            except ValueError:
+                continue
+
+            if score >= 90:
+                dev_nome = jogo.get('Developers', '').strip()
+
+                if dev_nome:
+                    contagem_dev[dev_nome] = contagem_dev.get(dev_nome, 0) + 1
+
+        if not contagem_dev:
+            return {"Desenvolvedora": "N/A", "Contagem": 0, "Mensagem": "Nenhum jogo com Metacritic >= 90 encontrado."}
+
+        # Encontra a chave (nome da desenvolvedora) com o maior valor (contagem)
+        melhor_dev = max(contagem_dev, key=contagem_dev.get)
+        contagem_maxima = contagem_dev[melhor_dev]
+
+        return {
+            "Desenvolvedora": melhor_dev, 
+            "Contagem": contagem_maxima
+        }
